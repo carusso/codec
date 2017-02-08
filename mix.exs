@@ -31,13 +31,14 @@ defmodule Codec.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
+      {:ex_doc, ">= 0.0.0", only: :dev},
       {:mex, "~> 0.0.1", only: [:dev, :test]},
     ]
   end
 
   defp description do
     """
-    facilitate the development of layered binary protocols while mostly sticking with the Elixir bit field syntax.
+    facilitates the development of layered binary protocols while mostly sticking with the Elixir bit field syntax.
     """
   end
 
