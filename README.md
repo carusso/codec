@@ -45,7 +45,7 @@ defmodule Packet do
 end
 ```
 
-This particular definition introduces no new syntax to Elixir.  Each of the numbers to the right of the ::: is the given field size in bits.  This documentation omits the unneeded "size(x)" form and simply specifies the size as "x".  For more information on Elixir bit syntax, see the [Kernel Special Forms](https://hexdocs.pm/elixir/Kernel.SpecialForms.html#%3C%3C%3E%3E/1) documentation.
+This particular definition introduces no new syntax to Elixir.  Each of the numbers to the right of the :: is the given field size in bits.  This documentation omits the unneeded "size(x)" form and simply specifies the size as "x".  For more information on Elixir bit syntax, see the [Kernel Special Forms](https://hexdocs.pm/elixir/Kernel.SpecialForms.html#%3C%3C%3E%3E/1) documentation.
 
 This would produce a struct (%Packet.S{}) containing all of the named fields.  It would also create two functions - one for encoding (Packet.encode/2) and one for decoding (Packet.decode/2) data of type Packet.
 
@@ -125,6 +125,7 @@ Only two reserved field names currently exist:
 This directive sets a default value for the specified field.  Currently, only integer value fields are supported.
 
 ###  add_shift(shift_amount)
+(Note that this directive is currently not passing tests.  It's not being used in production anywhere and the problem would need to be resolved)
 Some bit fields longer than a byte need to be reassembled with little endian encoding.  For example:
 ```elixir
     <<
@@ -155,6 +156,16 @@ For encoding, sometimes values need to be calculated at the time that the encodi
 ```
 
 After encoding, the size of the payload field would appear where payload_size was specified in the packet.  It would be a 2 byte field, little endian.
+
+###  decode_func(<function call>)
+For decoding, sometimes values need to be calculated at the time that the decoding is happening.  If the calculation can happen without decoding being completed, use decode_func().  For example:
+```elixir
+    <<
+      field       :: 16-decode_func(bnot(field))
+    >>
+```
+
+After decoding, the field value would contain the bitwise NOT of the value that was in that position of the packet.  Ensure that the "use Bitwise" declaration is in the scope where the macro would be expanded in order to have them available.
 
 ###  call_on_encoded(<function atom>, <:before | :after>)
 Some fields can't be calculated until after the main packet has been built. These fields normally appear at the beginning or end of the packet.  Think CRC, message signing, some packet size fields.  Assume the existence of a crc16Lsb function that takes a binary and returns a crc integer in the following example:

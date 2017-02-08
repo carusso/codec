@@ -7,6 +7,8 @@ defmodule Codec.Mixfile do
      elixir: "~> 1.4",
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
+     description: description(),
+     package: package(),
      deps: deps()]
   end
 
@@ -32,4 +34,21 @@ defmodule Codec.Mixfile do
       {:mex, "~> 0.0.1", only: [:dev, :test]},
     ]
   end
+
+  defp description do
+    """
+    facilitate the development of layered binary protocols while mostly sticking with the Elixir bit field syntax.
+    """
+  end
+
+  defp package do
+    [
+      name: :codec,
+      files: ["lib", "mix.exs", "README*", "LICENSE*"],
+      maintainers: ["Chris Russo"],
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/carusso/codec"}
+    ]
+  end
+
 end
