@@ -1,6 +1,8 @@
 defmodule CodecTest do
   use ExUnit.Case
 
+  doctest Codec.Generator
+  
   defmodule OuterMsg do
     use Codec.Generator
     make_encoder_decoder() do

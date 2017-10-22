@@ -2,7 +2,7 @@
 
 The Elixir bit field syntax is extremely useful and expressive when encoding and decoding packetized data.  In order to facilitate the development of layered binary protocols while mostly sticking with the Elixir bit field syntax, this module was created.
 
-With a simple Elixir definition of the format of the packet, an encode() and a decode() function is created as well as an Elixir structure that will hold all of the values in that structure.
+With a simple Elixir definition of the format of the packet, encode() and decode() functions are created as well as an Elixir structure that will hold all of the values in that structure.
 
 Minor additions to the existing Elixir syntax allows for special operations to occur during encoding and decoding, such as calculating payload sizes, crc's, performing bitwise operations, etc.
 

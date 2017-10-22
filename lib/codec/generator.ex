@@ -19,7 +19,7 @@ defmodule Codec.Generator do
     current_module = if !current_module, do: __MODULE__, else: current_module
 
     # Pull the list of non-hidden bit field names
-    key_list = Enum.filter_map fields, &(!&1.hidden), &(&1.name)
+    key_list = Enum.filter(fields, &(!&1.hidden)) |> Enum.map(&(&1.name))
     unique_key_list = Enum.uniq key_list
     # Build a count of how many times each unique bit field name is used
     kl_count = Enum.map unique_key_list, fn item -> Enum.count key_list, &(&1 == item) end
@@ -34,7 +34,7 @@ defmodule Codec.Generator do
 
     # create the reassembly code for split fields <atom>_1, etc.
     # This AST is used in the decoder
-    split_fields = Enum.filter_map field_counts, &(elem(&1, 1) > 1), &(elem(&1, 0))
+    split_fields = Enum.filter(field_counts, &(elem(&1, 1) > 1)) |> Enum.map(&(elem(&1, 0)))
     split_ast_string = Enum.reduce split_fields, "", fn(x, acc) ->
                                 acc <> decoder_reassembly_little(x, acc, fields) end
 
@@ -166,7 +166,7 @@ defmodule Codec.Generator do
       else
         {:<<>>, [], do_clause_encode}
       end
-    # TODO: This is a good method for eliminating the nils in the quoted aprts of
+    # TODO: This is a good method for eliminating the nils in the quoted parts of
     # the macro.  Maybe I should use it for all parts
     encode_block_elems = [do_clause_encode, call_on_encoded_clause]
     encode_clauses = Enum.filter encode_block_elems, &(&1)
@@ -268,20 +268,6 @@ defmodule Codec.Generator do
     end
   end
 
-###############  Public Functions  ################
-  def pad_payload_to(packet, target_size) do
-    packet_size = byte_size(packet)
-    if packet_size < target_size do
-      String.pad_trailing(packet, target_size, << 0 >>)
-    else
-      packet
-    end
-  end
-
-  def add_null_bytes(packet, number_bytes) do
-    packet_size = byte_size(packet)
-    String.pad_trailing(packet, packet_size + number_bytes, << 0 >>)
-  end
 
 ###############  Private Functions  ################
   defp add_my_prefix(field) do
