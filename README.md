@@ -14,7 +14,7 @@ Simply include a dependency in your mix.exs:
 
 ```elixir
 def deps do
-  [{:codec, "~> 0.1.0"}]
+  [{:codec, "~> 0.1.1"}]
 end
 ```
 

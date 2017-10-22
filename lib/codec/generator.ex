@@ -1,6 +1,8 @@
 defmodule Codec.Generator do
   @moduledoc """
     Main module that contains the macro used to create the encode() and decode() functions
+
+    [Documentation can be found here](https://github.com/carusso/codec/blob/master/README.md)
   """
 
   defmacro __using__(_opts) do
