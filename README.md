@@ -192,7 +192,6 @@ allows you to view the final code created by the macro.
 
 ## To Do
 This module is used currently in an internal tool within my company.  Eventually, I intend to add more features.  Any assistance with these features would be appreciated.
-- Allow non-integer default() specification.
 - In the decoders I haven't really found the passed-in struct useful.  My original thought was that I might want to pass in a partially-populated struct that could be supplemented by the decoder, but it never ended up making sense.  It could safely be removed.
 - Smarter decoding of nested protocols.  It should be possible to call a multi_decode() function on a binary packet and have a map returned that contains all of the nested packet types in decoded form.  This will require some way of specifying how packet types are related to one another.  Possibly each packet type can have a list of types from which it could be derived.  Or perhaps hierarchical module organization of packet definitions could be exploited to determine those relationships.
 - The whole %Blah.S{} struct declaration happened because I didn't see a way to create a %Blah{} struct for a module within the macro definition.  I'd like to eliminate the need for the ".S", if possible.
