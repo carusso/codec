@@ -265,20 +265,40 @@ defmodule CodecTest do
     assert packet == <<203, 14, 255, 255, 18, 52, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48>>
   end
 
-  # @tag :skip
   defmodule SumValuesBeginTest do
     import TestHelper
     use Codec.Generator
-    make_encoder_decoder(debug: :final_ast) do
+    make_encoder_decoder() do
       module = __MODULE__
       <<
+        sum                :: 16-call_on_encoded({:sum, :before}),
         payload            :: binary,
-        sum                :: 16-call_on_encoded({:sum, :before})
       >>
     end
   end
   test "use call_on_encoded() to sum some values in a string and put them at the beginning" do
     packet = <<1, 2, 3, 4>> |> SumValuesBeginTest.encode(%SumValuesBeginTest.S{})
+    strct = SumValuesBeginTest.decode(packet)
     assert packet == <<0, 10, 1, 2, 3, 4>>
+    assert strct.payload == <<1, 2, 3, 4>>
+    assert strct.sum == 10
+  end
+
+  defmodule PutPayloadBeforeValueTest do
+    import TestHelper
+    use Codec.Generator
+    make_encoder_decoder() do
+      module = __MODULE__
+      <<
+        payload            :: binary,
+        key                :: little-32-default(0xEFCDAB89)
+      >>
+    end
+  end
+  test "ensure that payload does not have to be the last field in the structure" do
+    packet = <<1, 2, 3, 4>> |> PutPayloadBeforeValueTest.encode(%PutPayloadBeforeValueTest.S{})
+    strct = PutPayloadBeforeValueTest.decode(packet)
+    assert packet == <<1, 2, 3, 4, 0x89, 0xAB, 0xCD, 0xEF>>
+    assert strct.key == 0xEFCDAB89
   end
 end

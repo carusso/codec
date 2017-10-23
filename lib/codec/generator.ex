@@ -4,7 +4,7 @@ defmodule Codec.Generator do
 
     [Documentation can be found here](https://github.com/carusso/codec/blob/master/README.md)
   """
-
+  use Private
   require Logger
 
   defmacro __using__(_opts) do
@@ -20,12 +20,12 @@ defmodule Codec.Generator do
     acc = %{ previous_sizes: %{}, fields: [] } # Accumulator for prewalk
     {_block, %{ fields: fields } } = Macro.prewalk do_clause, acc, &gather_field_list/2
     {_block, current_module} = Macro.prewalk do_clause, nil, &get_module_name/2
-    current_module = if !current_module, do: __MODULE__, else: current_module
+    current_module = if current_module, do: current_module, else: __MODULE__
 
     # Pull the list of non-hidden bit field names
     key_list = Enum.filter(fields, &(!&1.hidden)) |> Enum.map(&(&1.name))
     unique_key_list = Enum.uniq key_list
-    # Build a count of how many times each unique bit field name is used
+    # Build a count of how many times each bit field name is used
     kl_count = Enum.map unique_key_list, fn item -> Enum.count key_list, &(&1 == item) end
     field_counts = Enum.zip unique_key_list, kl_count
 
@@ -53,11 +53,7 @@ defmodule Codec.Generator do
     # be on the payload of a given packet.  This way we can have bit fields with
     # a size after the payload, like say a crc().  Otherwise, Elixir fails to
     # compile the decoder with a " binary field without size is only allowed at
-    # the end of a binary pattern" message.  It may be that I'll need to change
-    # this part of the code to only worry about the size field if the payload
-    # is not the last field in the pattern.
-    # It's worth noting that if I discover I have to parse a variable length
-    # packet where the payload varies, this code will have to be fixed.
+    # the end of a binary pattern" message.
     total_bit_size = Enum.reduce fields, 0, &((&1[:size] || 0) + &2)
     total_byte_size = div(total_bit_size, 8)
     dec_fields = Enum.map fields, fn field ->
@@ -101,7 +97,7 @@ defmodule Codec.Generator do
                           {:=, [], [new_do_clause, {:packet, [], nil}]}
                         ]}
 
-    # create the disassembly code for split fields in the decoder.
+    # create the disassembly code for split fields in the encoder.
     # This code section creates temporary variables that rejoin multiple bit fields
     # into the fields of the returned map.
     split_ast_string = Enum.reduce split_fields, "", fn(x, acc) ->
@@ -281,141 +277,143 @@ defmodule Codec.Generator do
 
 
 ###############  Private Functions  ################
-  defp add_my_prefix(field) do
-    if field[:hidden] == false and field[:split] == false and field[:name] != :payload do
+  private do # Using Dave Thomas' private macro to allow testing of some of these
+             # private functions if I so desire.
+    defp add_my_prefix(field) do
+      if field[:hidden] == false and field[:split] == false and field[:name] != :payload do
+        [tuple, rest] = field.elem
+        field_key = elem tuple, 0
+        tuple = {{:., [], [{:my, [], nil}, field_key]}, [], []}
+        put_in field[:elem], [tuple, rest]
+      else
+        field
+      end
+    end
+
+    defp get_field_default(field_key, fields) do
+      Enum.find_value fields, 0, &(&1[:orig_name] == field_key && &1[:default])
+    end
+
+    defp decoder_reassemble_one_little(field) do
+      if (field[:shift] > 0) do
+        "(#{field[:name]} <<< #{field[:shift]})"
+      else
+        "#{field[:name]}"
+      end
+    end
+
+    defp decoder_reassembly_little(field_key, _, fields) do
+      # field = print one out <> #print the rest out \n
+      fields = Enum.filter fields, &(&1.orig_name == field_key)
+      "#{field_key} = " <>
+        Enum.map_join(fields, " + ", &decoder_reassemble_one_little/1) <>
+        "\n"
+    end
+
+    defp encoder_disassemble_one_little(field) do
+      use Bitwise
+      mask = 0xFFFF >>> (16 - field[:size] - field[:shift])
+      if (field[:shift] > 0) do
+        "#{field[:name]} = (my.#{field[:orig_name]} &&& #{mask}) >>> #{field[:shift]}"
+      else
+        "#{field[:name]} = my.#{field[:orig_name]} &&& #{mask}"
+      end
+    end
+
+    # field_1 = my.field &&& 0x00FF
+    # field_2 = (my.field &&& 0x0F00) >>> 8
+    defp encoder_splitter_little(field_key, _, fields) do
+      fields = Enum.filter fields, &(&1.orig_name == field_key)
+      Enum.map_join(fields, "\n", &encoder_disassemble_one_little/1) <> "\n"
+    end
+
+    # When multiple keys have the same name, that's an indicator in the DSL that
+    # the value for the key is split into multiple parts.  This function handles
+    # renaming those duplicate keys by adding a _1, _2, _3, etc. as well as
+    # updating other relevant state variables
+    defp update_for_splits(field, tracker, field_counts) do
       [tuple, rest] = field.elem
       field_key = elem tuple, 0
-      tuple = {{:., [], [{:my, [], nil}, field_key]}, [], []}
-      put_in field[:elem], [tuple, rest]
-    else
-      field
+      case field_counts[field_key] do
+        count when is_integer(count) and count > 1 ->
+          suffix = tracker[field_key] || 1
+          orig_name = field[:name]
+          new_name = Atom.to_string(orig_name) <> "_" <> Integer.to_string(suffix)
+          new_key = String.to_atom(new_name)
+          tuple = put_elem tuple, 0, new_key
+          field = %{field | elem: [tuple, rest], name: new_key}
+          field = put_in field[:split], true
+          tracker = put_in tracker[field_key], suffix + 1
+          {field, tracker}
+        _count ->
+          field = put_in field[:split], false
+          {field, tracker}
+      end
+    end
+
+
+    # {:=, [line: 5],
+    # [{:module, [line: 5], nil}, {:__aliases__, [counter: 0, line: 5], [:CHCP]}]}
+    defp get_module_name({:=, _opts, [{:module, _, _}, {:__aliases__, _, module_list}]}=ast, _) do
+      {ast, Module.concat module_list}
+    end
+    defp get_module_name(ast, acc) do
+      {ast, acc}
+    end
+
+    # This function is handed to the AST traversal routine and in particular pulls
+    # out the clauses with the :: operator in the bitfield specifiers.  It assembles
+    # some basic information for each element thus identified.
+    defp gather_field_list({:::, _opts, list}=ast, acc) do
+      %{ previous_sizes: previous_sizes, fields: fields } = acc
+      [{field_atom, _, nil}, _] = list
+      rec = %{name: field_atom,
+              orig_name: field_atom,
+              hidden: (field_atom == :reserved), # hide payload? || field_atom == :payload),
+              elem: list,
+              default: (get_custom_type(:default, list) || 0),
+              size: get_size(list),
+              shift: (previous_sizes[field_atom] || 0) + (get_custom_type(:add_shift, list) || 0)
+            }
+      previous_sizes = Map.put previous_sizes, field_atom, rec.shift + (rec.size || 0)
+      fields = fields ++ [rec]
+      {ast, %{acc | previous_sizes: previous_sizes, fields: fields}}
+    end
+    defp gather_field_list(ast, acc) do
+      {ast, acc}
+    end
+
+
+
+   # Accepts an atom as a type that will match against any type specifier macro function
+   # with a name that matches the atom.  Returns the arguments for that macro.  Used to
+   # get the default() values, custom_type values, etc.
+   defp get_custom_type(type, [head|tail]) do  # Process the top level list or sub argument lists
+     get_custom_type(type, head) || get_custom_type(type, tail)
+   end
+   defp get_custom_type(type, {xtype, _, [custom_args]}) when xtype == type, do: custom_args # Found a custom specifier
+   # more arg lists may embed custom specifier
+   defp get_custom_type(type, {_, _, list}) when is_list(list), do: get_custom_type(type, list)
+   defp get_custom_type(_, _), do: nil  # Nothing else matched, should be a fail on this section
+
+    # This next function takes the argument list from the AST of the ::: atom,
+    # which means that they will be the field name to the left of the :: and the
+    # bit specifiers to the right of it.
+    defp get_size({:size, _, [bit_size]}) when is_integer(bit_size), do: bit_size # explicit size()
+    defp get_size({:-, _, [_, bit_size]}) when is_integer(bit_size), do: bit_size # size on right of -
+    defp get_size({:-, _, [bit_size, _]}) when is_integer(bit_size), do: bit_size # size on left of -
+    defp get_size([tuple, bit_size]) when is_tuple(tuple) and is_integer(bit_size), do: bit_size # size as only right arg to ::
+    defp get_size({_, _, list}) when is_list(list), do: get_size(list) # nested tuple meaning multiple -s
+    defp get_size([head|tail]) do
+      result = get_size(head)
+      if result, do: result, else: get_size(tail)
+    end
+    defp get_size(_), do: nil # Nothing else matched, should fail on this section
+
+    def millis_since_1970() do
+      {mega, sec, micro} = :erlang.timestamp()
+      micros = (mega * 1_000_000 + sec) * 1_000_000 + micro
+      div micros, 1_000
     end
   end
-
-  defp get_field_default(field_key, fields) do
-    Enum.find_value fields, 0, &(&1[:orig_name] == field_key && &1[:default])
-  end
-
-  defp decoder_reassemble_one_little(field) do
-    if (field[:shift] > 0) do
-      "(#{field[:name]} <<< #{field[:shift]})"
-    else
-      "#{field[:name]}"
-    end
-  end
-
-  defp decoder_reassembly_little(field_key, _, fields) do
-    # field = print one out <> #print the rest out \n
-    fields = Enum.filter fields, &(&1.orig_name == field_key)
-    "#{field_key} = " <>
-      Enum.map_join(fields, " + ", &decoder_reassemble_one_little/1) <>
-      "\n"
-  end
-
-  defp encoder_disassemble_one_little(field) do
-    use Bitwise
-    mask = 0xFFFF >>> (16 - field[:size] - field[:shift])
-    if (field[:shift] > 0) do
-      "#{field[:name]} = (my.#{field[:orig_name]} &&& #{mask}) >>> #{field[:shift]}"
-    else
-      "#{field[:name]} = my.#{field[:orig_name]} &&& #{mask}"
-    end
-  end
-
-  # field_1 = my.field &&& 0x00FF
-  # field_2 = (my.field &&& 0x0F00) >>> 8
-  defp encoder_splitter_little(field_key, _, fields) do
-    fields = Enum.filter fields, &(&1.orig_name == field_key)
-    Enum.map_join(fields, "\n", &encoder_disassemble_one_little/1) <> "\n"
-  end
-
-  # When multiple keys have the same name, that's an indicator in the DSL that
-  # the value for the key is split into multiple parts.  This function handles
-  # renaming those duplicate keys by adding a _1, _2, _3, etc. as well as
-  # updating other relevant state variables
-  defp update_for_splits(field, tracker, field_counts) do
-    [tuple, rest] = field.elem
-    field_key = elem tuple, 0
-    case field_counts[field_key] do
-      count when is_integer(count) and count > 1 ->
-        suffix = tracker[field_key] || 1
-        orig_name = field[:name]
-        new_name = Atom.to_string(orig_name) <> "_" <> Integer.to_string(suffix)
-        new_key = String.to_atom(new_name)
-        tuple = put_elem tuple, 0, new_key
-        field = %{field | elem: [tuple, rest], name: new_key}
-        field = put_in field[:split], true
-        tracker = put_in tracker[field_key], suffix + 1
-        {field, tracker}
-      _count ->
-        field = put_in field[:split], false
-        {field, tracker}
-    end
-  end
-
-
-  # {:=, [line: 5],
-  # [{:module, [line: 5], nil}, {:__aliases__, [counter: 0, line: 5], [:CHCP]}]}
-  defp get_module_name({:=, _opts, [{:module, _, _}, {:__aliases__, _, module_list}]}=ast, _) do
-    {ast, Module.concat module_list}
-  end
-  defp get_module_name(ast, acc) do
-    {ast, acc}
-  end
-
-  # This function is handed to the AST traversal routine and in particular pulls
-  # out the clauses with the :: operator in the bitfield specifiers.  It assembles
-  # some basic information for each element thus identified.
-  defp gather_field_list({:::, _opts, list}=ast, acc) do
-    %{ previous_sizes: previous_sizes, fields: fields } = acc
-    [{field_atom, _, nil}, _] = list
-    rec = %{name: field_atom,
-            orig_name: field_atom,
-            hidden: (field_atom == :reserved), # hide payload? || field_atom == :payload),
-            elem: list,
-            default: (get_custom_type(:default, list) || 0),
-            size: get_size(list),
-            shift: (previous_sizes[field_atom] || 0) + (get_custom_type(:add_shift, list) || 0)
-          }
-    previous_sizes = Map.put previous_sizes, field_atom, rec.shift + (rec.size || 0)
-    fields = fields ++ [rec]
-    {ast, %{acc | previous_sizes: previous_sizes, fields: fields}}
-  end
-  defp gather_field_list(ast, acc) do
-    {ast, acc}
-  end
-
-
-
- # Accepts an atom as a type that will match against any type specifier macro function
- # with a name that matches the atom.  Returns the arguments for that macro.  Used to
- # get the default() values, custom_type values, etc.
- defp get_custom_type(type, [head|tail]) do  # Process the top level list or sub argument lists
-   get_custom_type(type, head) || get_custom_type(type, tail)
- end
- defp get_custom_type(type, {xtype, _, [custom_args]}) when xtype == type, do: custom_args # Found a custom specifier
- # more arg lists may embed custom specifier
- defp get_custom_type(type, {_, _, list}) when is_list(list), do: get_custom_type(type, list)
- defp get_custom_type(_, _), do: nil  # Nothing else matched, should be a fail on this section
-
-  # This next function takes the argument list from the AST of the ::: atom,
-  # which means that they will be the field name to the left of the :: and the
-  # bit specifiers to the right of it.
-  defp get_size({:size, _, [bit_size]}) when is_integer(bit_size), do: bit_size # explicit size()
-  defp get_size({:-, _, [_, bit_size]}) when is_integer(bit_size), do: bit_size # size on right of -
-  defp get_size({:-, _, [bit_size, _]}) when is_integer(bit_size), do: bit_size # size on left of -
-  defp get_size([tuple, bit_size]) when is_tuple(tuple) and is_integer(bit_size), do: bit_size # size as only right arg to ::
-  defp get_size({_, _, list}) when is_list(list), do: get_size(list) # nested tuple meaning multiple -s
-  defp get_size([head|tail]) do
-    result = get_size(head)
-    if result, do: result, else: get_size(tail)
-  end
-  defp get_size(_), do: nil # Nothing else matched, should fail on this section
-
-  def millis_since_1970() do
-    {mega, sec, micro} = :erlang.timestamp()
-    micros = (mega * 1_000_000 + sec) * 1_000_000 + micro
-    div micros, 1_000
-  end
-
 end

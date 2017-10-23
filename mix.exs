@@ -19,6 +19,7 @@ defmodule Codec.Mixfile do
 
   defp deps do
     [
+      {:private, "> 0.0.0"},
       {:ex_doc, "~> 0.18", only: :dev, runtime: false},
       {:mex, "~> 0.0.5", only: [:dev, :test]},
     ]
