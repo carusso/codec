@@ -19,8 +19,8 @@ defmodule Codec.Generator do
     # as well as the bit shifting we'll need to do for split fields.
     acc = %{ previous_sizes: %{}, fields: [] } # Accumulator for prewalk
     {_block, %{ fields: fields } } = Macro.prewalk do_clause, acc, &gather_field_list/2
-    {_block, current_module} = Macro.prewalk do_clause, nil, &get_module_name/2
-    current_module = if current_module, do: current_module, else: __MODULE__
+    # {_block, current_module} = Macro.prewalk do_clause, nil, &get_module_name/2
+    # current_module = if current_module, do: current_module, else: __MODULE__
 
     # Pull the list of non-hidden bit field names
     key_list = Enum.filter(fields, &(!&1.hidden)) |> Enum.map(&(&1.name))
@@ -204,14 +204,6 @@ defmodule Codec.Generator do
         raise "Error creating map of values for decoder: #{set_map_string}"
         nil
     end
-    set_map_string2 = "Map.put(bndl, #{current_module}, #{set_map_string})"
-    set_map_decl2 = case Code.string_to_quoted set_map_string2 do
-      {:ok, result} ->
-        result
-      {:error, _error} ->
-        raise "Error creating map of values for decoder2: #{set_map_string}"
-        nil
-    end
 
     # This is ugly, but I didn't have an easy way to disable the payload variable
     # when it wasn't needed for some invocations of the encode() function - so
@@ -219,31 +211,39 @@ defmodule Codec.Generator do
     # variable.
     # It would be nice to clean this up a bit, but I'd have to experiment more
     # with macros TODO
+    encode_ast_block = make_ast_block([ fields_zero_decl,
+                                        encode_func_calls_ast,
+                                        split_field_encode_decl,
+                                        do_clause_encode])
+
     uses_payload = Enum.find_value fields, &(&1[:name] == :payload)
     quoted_encode =
       if uses_payload do
         quote do
           def encode(var!(payload), var!(my)) do
             use Bitwise
-            unquote(fields_zero_decl)
-            unquote(encode_func_calls_ast)
-            unquote(split_field_encode_decl)
-            unquote(do_clause_encode)
+            unquote(encode_ast_block)
           end
         end
       else
           quote do
             def encode(var!(_payload), var!(my)) do
               use Bitwise
-              unquote(fields_zero_decl)
-              unquote(encode_func_calls_ast)
-              unquote(split_field_encode_decl)
-              unquote(do_clause_encode)
+              unquote(encode_ast_block)
             end
           end
       end
 
-
+    decode_ast_block = make_ast_block([ do_clause_decode,
+                                        split_field_decode_decl,
+                                        set_map_decl])
+    quoted_decode =
+      quote do
+        def decode(var!(packet), var!(my) \\ %__MODULE__.S{}) do
+          use Bitwise
+          unquote(decode_ast_block)
+        end
+      end
     # This is the section of the macro that generates the struct as well as the
     # encode() and decode() functions.
     full_ast =
@@ -251,26 +251,15 @@ defmodule Codec.Generator do
         defmodule S do
           defstruct unquote(struct_decl)
         end
-
         unquote(quoted_encode)
-
-        def decode(var!(packet), var!(my) \\ %__MODULE__.S{}) do
-          use Bitwise
-          unquote(do_clause_decode)
-          unquote(split_field_decode_decl)
-          unquote(set_map_decl)
-        end
-
-        def decode2(var!(bndl), var!(packet), var!(my) \\ %__MODULE__.S{}) do
-          use Bitwise
-          unquote(do_clause_decode)
-          unquote(split_field_decode_decl)
-          unquote(set_map_decl2)
-        end
+        unquote(quoted_decode)
       end
 
-    if Keyword.get(macro_opts, :debug) == :final_ast do
-      Logger.debug "Encoder:\n#{inspect(full_ast, pretty: true)}"
+    if :final_ast in Keyword.get_values(macro_opts, :debug) do
+      Logger.debug "AST:\n#{inspect(full_ast, pretty: true)}"
+    end
+    if :final_code in Keyword.get_values(macro_opts, :debug) do
+      Logger.debug "Code:\n#{Macro.to_string(full_ast)}"
     end
     full_ast
   end
@@ -279,6 +268,13 @@ defmodule Codec.Generator do
 ###############  Private Functions  ################
   private do # Using Dave Thomas' private macro to allow testing of some of these
              # private functions if I so desire.
+
+    # Returns an AST __block__ section from the array of clauses.  Filters our nil entries
+    defp make_ast_block(clauses) do
+      clauses = Enum.filter(clauses, &(&1 != nil))
+      {:__block__, [], clauses}
+    end
+
     defp add_my_prefix(field) do
       if field[:hidden] == false and field[:split] == false and field[:name] != :payload do
         [tuple, rest] = field.elem
@@ -351,7 +347,6 @@ defmodule Codec.Generator do
       end
     end
 
-
     # {:=, [line: 5],
     # [{:module, [line: 5], nil}, {:__aliases__, [counter: 0, line: 5], [:CHCP]}]}
     defp get_module_name({:=, _opts, [{:module, _, _}, {:__aliases__, _, module_list}]}=ast, _) do
@@ -383,18 +378,16 @@ defmodule Codec.Generator do
       {ast, acc}
     end
 
-
-
-   # Accepts an atom as a type that will match against any type specifier macro function
-   # with a name that matches the atom.  Returns the arguments for that macro.  Used to
-   # get the default() values, custom_type values, etc.
-   defp get_custom_type(type, [head|tail]) do  # Process the top level list or sub argument lists
-     get_custom_type(type, head) || get_custom_type(type, tail)
-   end
-   defp get_custom_type(type, {xtype, _, [custom_args]}) when xtype == type, do: custom_args # Found a custom specifier
-   # more arg lists may embed custom specifier
-   defp get_custom_type(type, {_, _, list}) when is_list(list), do: get_custom_type(type, list)
-   defp get_custom_type(_, _), do: nil  # Nothing else matched, should be a fail on this section
+    # Accepts an atom as a type that will match against any type specifier macro function
+    # with a name that matches the atom.  Returns the arguments for that macro.  Used to
+    # get the default() values, custom_type values, etc.
+    defp get_custom_type(type, [head|tail]) do  # Process the top level list or sub argument lists
+      get_custom_type(type, head) || get_custom_type(type, tail)
+    end
+    defp get_custom_type(type, {xtype, _, [custom_args]}) when xtype == type, do: custom_args # Found a custom specifier
+    # more arg lists may embed custom specifier
+    defp get_custom_type(type, {_, _, list}) when is_list(list), do: get_custom_type(type, list)
+    defp get_custom_type(_, _), do: nil  # Nothing else matched, should be a fail on this section
 
     # This next function takes the argument list from the AST of the ::: atom,
     # which means that they will be the field name to the left of the :: and the

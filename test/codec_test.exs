@@ -285,7 +285,6 @@ defmodule CodecTest do
   end
 
   defmodule PutPayloadBeforeValueTest do
-    import TestHelper
     use Codec.Generator
     make_encoder_decoder() do
       module = __MODULE__
