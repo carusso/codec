@@ -184,8 +184,11 @@ In this case, call_on_encode is not called until AFTER the main packet has been 
 ## Debugging Help
 Options can be passed to the make_encoder_decoder() function in order to facilitate debugging.
 
-Currently, the only available option is "debug: :final_ast", which allows you to view the AST representation created by the macro.  If you're unfamiliar with Elixir's AST (Abstract Syntax Notation), you can learn about the concept by reading [Quote and unquote](https://elixir-lang.org/getting-started/meta/quote-and-unquote.html)
+### debug: :final_ast
+allows you to view the AST representation created by the macro.  If you're unfamiliar with Elixir's AST (Abstract Syntax Notation), you can learn about the concept by reading [Quote and unquote](https://elixir-lang.org/getting-started/meta/quote-and-unquote.html)
 
+### debug: :final_code
+allows you to view the final code created by the macro.
 
 ## To Do
 This module is used currently in an internal tool within my company.  Eventually, I intend to add more features.  Any assistance with these features would be appreciated.
