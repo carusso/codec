@@ -2,7 +2,7 @@ defmodule CodecTest do
   use ExUnit.Case
 
   doctest Codec.Generator
-  
+
   defmodule OuterMsg do
     use Codec.Generator
     make_encoder_decoder() do
@@ -213,7 +213,7 @@ defmodule CodecTest do
       >>
     end
   end
-  test "use a decode_func() to put the xor of a field in its place" do
+  test "use a decode_func() to put the bnot() of a field in its place" do
     use Bitwise
     value = 0xAACC
     packet = "" |> NotMsg.encode(%NotMsg.S{field: value})
@@ -240,8 +240,7 @@ defmodule CodecTest do
   end
   test "use call_on_encoded() to put a 16 bit CRC of the payload at the end of the packet" do
     crc_msg = %CRCMsg.S{}
-    packet = "1234567890"
-            |> CRCMsg.encode(crc_msg)
+    packet = "1234567890" |> CRCMsg.encode(crc_msg)
     assert packet == <<18, 52, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 76, 146>>
   end
 
@@ -259,11 +258,27 @@ defmodule CodecTest do
   end
   test "use call_on_encoded() to put a 32 bit CRC of the payload at the beginning of the packet" do
     crc_msg = %CRC32Msg.S{}
-    packet = "1234567890"
-            |> CRC32Msg.encode(crc_msg)
+    packet = "1234567890" |> CRC32Msg.encode(crc_msg)
 
     # the :before tag will actually put the crc at the beginning of the packet.  So in this case
     # the first 4 bytes in the packet are the crc32 in little endian
     assert packet == <<203, 14, 255, 255, 18, 52, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48>>
+  end
+
+  # @tag :skip
+  defmodule SumValuesBeginTest do
+    import TestHelper
+    use Codec.Generator
+    make_encoder_decoder(debug: :final_ast) do
+      module = __MODULE__
+      <<
+        payload            :: binary,
+        sum                :: 16-call_on_encoded({:sum, :before})
+      >>
+    end
+  end
+  test "use call_on_encoded() to sum some values in a string and put them at the beginning" do
+    packet = <<1, 2, 3, 4>> |> SumValuesBeginTest.encode(%SumValuesBeginTest.S{})
+    assert packet == <<0, 10, 1, 2, 3, 4>>
   end
 end

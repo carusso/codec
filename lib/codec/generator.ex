@@ -5,6 +5,8 @@ defmodule Codec.Generator do
     [Documentation can be found here](https://github.com/carusso/codec/blob/master/README.md)
   """
 
+  require Logger
+
   defmacro __using__(_opts) do
     quote do
       import Codec.Generator
@@ -12,7 +14,7 @@ defmodule Codec.Generator do
     end
   end
 
-  defmacro make_encoder_decoder(do: do_clause) do
+  defmacro make_encoder_decoder(macro_opts \\ [], do: do_clause) do
     # We do a tree walk to build up some basic info, like the bit field clause list
     # as well as the bit shifting we'll need to do for split fields.
     acc = %{ previous_sizes: %{}, fields: [] } # Accumulator for prewalk
@@ -245,29 +247,36 @@ defmodule Codec.Generator do
           end
       end
 
+
     # This is the section of the macro that generates the struct as well as the
     # encode() and decode() functions.
-    quote do
-      defmodule S do
-        defstruct unquote(struct_decl)
+    full_ast =
+      quote do
+        defmodule S do
+          defstruct unquote(struct_decl)
+        end
+
+        unquote(quoted_encode)
+
+        def decode(var!(packet), var!(my) \\ %__MODULE__.S{}) do
+          use Bitwise
+          unquote(do_clause_decode)
+          unquote(split_field_decode_decl)
+          unquote(set_map_decl)
+        end
+
+        def decode2(var!(bndl), var!(packet), var!(my) \\ %__MODULE__.S{}) do
+          use Bitwise
+          unquote(do_clause_decode)
+          unquote(split_field_decode_decl)
+          unquote(set_map_decl2)
+        end
       end
 
-      unquote(quoted_encode)
-
-      def decode(var!(packet), var!(my) \\ %__MODULE__.S{}) do
-        use Bitwise
-        unquote(do_clause_decode)
-        unquote(split_field_decode_decl)
-        unquote(set_map_decl)
-      end
-
-      def decode2(var!(bndl), var!(packet), var!(my) \\ %__MODULE__.S{}) do
-        use Bitwise
-        unquote(do_clause_decode)
-        unquote(split_field_decode_decl)
-        unquote(set_map_decl2)
-      end
+    if Keyword.get(macro_opts, :debug) == :final_ast do
+      Logger.debug "Encoder:\n#{inspect(full_ast, pretty: true)}"
     end
+    full_ast
   end
 
 

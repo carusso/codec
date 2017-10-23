@@ -2,7 +2,7 @@ ExUnit.start()
 
 defmodule TestHelper do
   use Bitwise
-  
+
   def crc16Lsb(input, crc \\ 0xFFFF)
   def crc16Lsb(input, crc) when bit_size(input) == 0, do: (~~~crc) &&& 0xFFFF
   def crc16Lsb(<< head :: size(8), tail :: binary >>, crc) do
@@ -28,5 +28,10 @@ defmodule TestHelper do
       _ ->
         shifter(crc, count+1)
     end
+  end
+
+  def sum(input) do
+    (for << byte :: 8 <- input >>, do: byte)
+    |> Enum.reduce(&(&1 + &2))
   end
 end
