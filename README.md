@@ -14,7 +14,7 @@ Simply include a dependency in your mix.exs:
 
 ```elixir
 def deps do
-  [{:codec, "~> 0.1.1"}]
+  [{:codec, "~> 0.1.2"}]
 end
 ```
 
@@ -185,11 +185,11 @@ In this case, call_on_encode is not called until AFTER the main packet has been 
 Options can be passed to the make_encoder_decoder() function as a keyword list.
 
 ### Default substitutions
-Any keyword that isn't an existing option can be used in default() entries.  Keep in mind that default() values can only be integers at this time.
+Any keyword that isn't an existing option can be used in default() entries.  Keep in mind that default() values can only be integers at this time.  Ensure that the bit size of the default is sufficient to hold the value specified or the behavior will be undefined.
 
 ```elixir
     <<
-      number    :: 16-encode_func(default(:favorite_number)),
+      number    :: 16-default(:favorite_number),
     >>
 
     ...
