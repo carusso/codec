@@ -300,4 +300,39 @@ defmodule CodecTest do
     assert packet == <<1, 2, 3, 4, 0x89, 0xAB, 0xCD, 0xEF>>
     assert strct.key == 0xEFCDAB89
   end
+
+  defmodule DefaultValueTest do
+    use Codec.Generator
+    make_encoder_decoder() do
+      module = __MODULE__
+      <<
+        special_value            :: 32-default(12345),
+      >>
+    end
+  end
+  test "ensure that default() values are honored" do
+    packet = DefaultValueTest.encode("", %DefaultValueTest.S{})
+    strct = DefaultValueTest.decode(packet)
+    assert strct.special_value == 12345
+  end
+  test "ensure that default() values can be overridden" do
+    packet = DefaultValueTest.encode("", %DefaultValueTest.S{special_value: 54321})
+    strct = DefaultValueTest.decode(packet)
+    assert strct.special_value == 54321
+  end
+
+  defmodule CustomDefaultValueTest do
+    use Codec.Generator
+    make_encoder_decoder(special: 54321) do
+      module = __MODULE__
+      <<
+        special_value            :: 32-default(:special),
+      >>
+    end
+  end
+  test "pass in a custom default value to be used by the default() function" do
+    packet = CustomDefaultValueTest.encode("", %CustomDefaultValueTest.S{})
+    strct = CustomDefaultValueTest.decode(packet)
+    assert strct.special_value == 54321
+  end
 end

@@ -17,7 +17,7 @@ defmodule Codec.Generator do
   defmacro make_encoder_decoder(macro_opts \\ [], do: do_clause) do
     # We do a tree walk to build up some basic info, like the bit field clause list
     # as well as the bit shifting we'll need to do for split fields.
-    acc = %{ previous_sizes: %{}, fields: [] } # Accumulator for prewalk
+    acc = %{ previous_sizes: %{}, fields: [], macro_opts: macro_opts } # Accumulator for prewalk
     {_block, %{ fields: fields } } = Macro.prewalk do_clause, acc, &gather_field_list/2
     # {_block, current_module} = Macro.prewalk do_clause, nil, &get_module_name/2
     # current_module = if current_module, do: current_module, else: __MODULE__
@@ -360,13 +360,19 @@ defmodule Codec.Generator do
     # out the clauses with the :: operator in the bitfield specifiers.  It assembles
     # some basic information for each element thus identified.
     defp gather_field_list({:::, _opts, list}=ast, acc) do
-      %{ previous_sizes: previous_sizes, fields: fields } = acc
+      %{ previous_sizes: previous_sizes, fields: fields, macro_opts: macro_opts } = acc
       [{field_atom, _, nil}, _] = list
+      default =
+        case get_custom_type(:default, list) do
+          nil -> 0
+          atom when is_atom(atom) -> Keyword.get(macro_opts, atom, 0)
+          number -> number
+        end
       rec = %{name: field_atom,
               orig_name: field_atom,
               hidden: (field_atom == :reserved), # hide payload? || field_atom == :payload),
               elem: list,
-              default: (get_custom_type(:default, list) || 0),
+              default: default,
               size: get_size(list),
               shift: (previous_sizes[field_atom] || 0) + (get_custom_type(:add_shift, list) || 0)
             }

@@ -181,6 +181,22 @@ Some fields can't be calculated until after the main packet has been built. Thes
 
 In this case, call_on_encode is not called until AFTER the main packet has been constructed.  The crc16Lsb field is basically pulled out of the bit layout definition by the macro that makes the encoder.  The results of the encode are then passed to the crc16Lsb() function and that result is tacked on to the end of the packet returned by encode().  The call_on_encoded() function accepts an argument that consists of a 2 item tuple with the first item being the atom referencing a func/1 function and the second tuple item being either :before or :after.  The second argument determines whether the results of the function call are prepended to the returned packet or appended respectively.  Since the field is pulled out of the packet layout, you could put its definition anywhere, but keep in mind that when a packet is decoded with this definition, the bit reservation should be in the proper place to prevent a bad decode.
 
+## Options to the Macro
+Options can be passed to the make_encoder_decoder() function as a keyword list.
+
+### Default substitutions
+Any keyword that isn't an existing option can be used in default() entries.  Keep in mind that default() values can only be integers at this time.
+
+```elixir
+    <<
+      number    :: 16-encode_func(default(:favorite_number)),
+    >>
+
+    ...
+
+    make_encoder_decoder(favorite_number: 42)
+```
+
 ## Debugging Help
 Options can be passed to the make_encoder_decoder() function in order to facilitate debugging.
 
