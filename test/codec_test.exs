@@ -5,57 +5,69 @@ defmodule CodecTest do
 
   defmodule OuterMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        escape_sequence    :: 16-default(0xABCD),
-        version            :: 8,
-        payload            :: binary
+        escape_sequence::16-default(0xABCD),
+        version::8,
+        payload::binary
       >>
     end
   end
 
   defmodule MiddleMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        highest_bit         :: 1,
-        next_highest_bit    :: 1,
-        middle_nibble       :: 4,
-        next_lowest_bit     :: 1,
-        lowest_bit          :: 1,
-        payload             :: binary
+        highest_bit::1,
+        next_highest_bit::1,
+        middle_nibble::4,
+        next_lowest_bit::1,
+        lowest_bit::1,
+        payload::binary
       >>
     end
   end
 
   defmodule InnerMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        long_value            :: 32,
-        long_little_endian    :: 32-little,
+        long_value::32,
+        long_little_endian::32-little
       >>
     end
   end
 
   test "encode an OuterMsg packet" do
     version = 12
-    outer = %OuterMsg.S{ version: version }
+    outer = %OuterMsg.S{version: version}
     payload = "1234"
-    packet = payload
-            |> OuterMsg.encode(outer)
+
+    packet =
+      payload
+      |> OuterMsg.encode(outer)
+
     assert packet == <<0xAB, 0xCD, version>> <> payload
   end
 
   test "encode then decode an OuterMsg packet" do
     version = 12
-    outer = %OuterMsg.S{ version: version }
+    outer = %OuterMsg.S{version: version}
     payload = "1234"
-    packet = payload
-            |> OuterMsg.encode(outer)
+
+    packet =
+      payload
+      |> OuterMsg.encode(outer)
+
     new_outer = OuterMsg.decode(packet)
     assert outer.version == new_outer.version
     assert new_outer.payload == payload
@@ -64,12 +76,15 @@ defmodule CodecTest do
   test "encode then decode an InnerMsg within an OuterMsg" do
     version = 63
     value = 0x12345678
-    outer = %OuterMsg.S{ version: version }
-    inner = %InnerMsg.S{ long_value: value, long_little_endian: value }
-    packet = ""
-            |> InnerMsg.encode(inner)
-            |> OuterMsg.encode(outer)
-    assert packet == <<0xAB, 0xCD, version>> <> << value :: 32, value :: little-32 >>
+    outer = %OuterMsg.S{version: version}
+    inner = %InnerMsg.S{long_value: value, long_little_endian: value}
+
+    packet =
+      ""
+      |> InnerMsg.encode(inner)
+      |> OuterMsg.encode(outer)
+
+    assert packet == <<0xAB, 0xCD, version>> <> <<value::32, value::little-32>>
 
     new_outer = OuterMsg.decode(packet)
     new_inner = InnerMsg.decode(new_outer.payload)
@@ -82,16 +97,26 @@ defmodule CodecTest do
   test "encode then decode an InnerMsg within a MiddleMsg within an OuterMsg" do
     version = 99
     value = 0xFEDCBA90
-    outer = %OuterMsg.S{ version: version }
-    middle = %MiddleMsg.S{ highest_bit: 1, next_highest_bit: 0, middle_nibble: 0xF, next_lowest_bit: 1, lowest_bit: 0 }
-    inner = %InnerMsg.S{ long_value: value, long_little_endian: value }
-    packet = ""
-            |> InnerMsg.encode(inner)
-            |> MiddleMsg.encode(middle)
-            |> OuterMsg.encode(outer)
-    assert packet ==  <<0xAB, 0xCD, version>> <>
-                      << 0b10111110 :: 8 >> <>
-                      << value :: 32, value :: little-32 >>
+    outer = %OuterMsg.S{version: version}
+
+    middle = %MiddleMsg.S{
+      highest_bit: 1,
+      next_highest_bit: 0,
+      middle_nibble: 0xF,
+      next_lowest_bit: 1,
+      lowest_bit: 0
+    }
+
+    inner = %InnerMsg.S{long_value: value, long_little_endian: value}
+
+    packet =
+      ""
+      |> InnerMsg.encode(inner)
+      |> MiddleMsg.encode(middle)
+      |> OuterMsg.encode(outer)
+
+    assert packet ==
+             <<0xAB, 0xCD, version>> <> <<0b10111110::8>> <> <<value::32, value::little-32>>
 
     new_outer = OuterMsg.decode(packet)
     new_middle = MiddleMsg.decode(new_outer.payload)
@@ -109,16 +134,19 @@ defmodule CodecTest do
 
   defmodule ReservedMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        reserved    :: 4,
-        nibble      :: 4,
-        nibble2     :: 4,
-        reserved    :: 4,
+        reserved::4,
+        nibble::4,
+        nibble2::4,
+        reserved::4
       >>
     end
   end
+
   test "use reserved fields within a message" do
     msg = %ReservedMsg.S{nibble: 0xA, nibble2: 0xC}
     packet = "" |> ReservedMsg.encode(msg)
@@ -131,16 +159,22 @@ defmodule CodecTest do
 
   defmodule SplitFieldsMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        split_field    :: 1,  # This will be the low bit from the input value
-        reserved       :: 2,
-        split_field    :: 3,  # 3 bits in the middle from the input value
-        split_field    :: 2,  # 2 high bits from the input value
+        # This will be the low bit from the input value
+        split_field::1,
+        reserved::2,
+        # 3 bits in the middle from the input value
+        split_field::3,
+        # 2 high bits from the input value
+        split_field::2
       >>
     end
   end
+
   test "bit fields can be split and rejoined 1" do
     value = 0b00111010
     packet = "" |> SplitFieldsMsg.encode(%SplitFieldsMsg.S{split_field: value})
@@ -148,6 +182,7 @@ defmodule CodecTest do
     assert new_msg.split_field == value
     assert packet == <<0b00010111>>
   end
+
   test "bit fields can be split and rejoined 2" do
     value = 0b00111111
     packet = "" |> SplitFieldsMsg.encode(%SplitFieldsMsg.S{split_field: value})
@@ -155,6 +190,7 @@ defmodule CodecTest do
     assert new_msg.split_field == value
     assert packet == <<0b10011111>>
   end
+
   test "bit fields can be split and rejoined 3" do
     value = 0b00110101
     packet = "" |> SplitFieldsMsg.encode(%SplitFieldsMsg.S{split_field: value})
@@ -163,38 +199,49 @@ defmodule CodecTest do
     assert packet == <<0b10001011>>
   end
 
-  defmodule ShiftMsg do
-    use Codec.Generator
-    make_encoder_decoder() do
-      module = __MODULE__
-      <<
-        foo         :: 3,
-        important   :: 5, # These 5 bits will be in the lsB
-        important   :: 8-add_shift(3), # We shift an extra 3 bits to put these
-                                       # all the way in the msB
-      >>
-    end
-  end
-  @tag :skip
-  test "add_shift() can be used to have elixir re-assemble bytes with bit shifting" do
-    important = 0b1111111111111  # 8191 or 0x1FFF
-    packet = "" |> ShiftMsg.encode(%ShiftMsg.S{important: important})
-    new_msg = ShiftMsg.decode(packet)
-    IO.inspect packet
-    assert new_msg.important == important
-    assert packet == <<0b10001011>>
-  end
+  # defmodule ShiftMsg do
+  #   use Codec.Generator
+  #
+  #   make_encoder_decoder(debug: :final_code) do
+  #     module = __MODULE__
+  #
+  #     <<
+  #       foo::3,
+  #       # These 5 bits will be in bottom of the lsB
+  #       important::5-add_shift(3),
+  #       # The next 8 bits would make up the msB
+  #       # We shift an extra 3 bits to put these all the way in the msB
+  #       important::8
+  #     >>
+  #   end
+  # end
+  #
+  # # @tag :skip
+  # test "add_shift() can be used to have elixir re-assemble bytes with bit shifting" do
+  #   # 8190
+  #   important = 0b1111111111110
+  #   foo = 0b100
+  #   packet = "" |> ShiftMsg.encode(%ShiftMsg.S{foo: foo, important: important})
+  #   new_msg = ShiftMsg.decode(packet)
+  #   IO.inspect(packet)
+  #   assert new_msg.foo == foo
+  #   assert new_msg.important == important
+  #   assert packet == <<0b1001111011111111::16>>
+  # end
 
   defmodule EncodeFuncMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        payload_size    :: 16-encode_func(byte_size(payload)),
-        payload         :: binary,
+        payload_size::16-encode_func(byte_size(payload)),
+        payload::binary
       >>
     end
   end
+
   test "use an encode_func() directive to put a payload size in the packet" do
     packet = "12345678" |> EncodeFuncMsg.encode(%EncodeFuncMsg.S{})
     msg = EncodeFuncMsg.decode(packet)
@@ -206,13 +253,16 @@ defmodule CodecTest do
 
   defmodule NotMsg do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        field       :: 16-decode_func(bnot(field))
+        field::16-decode_func(bnot(field))
       >>
     end
   end
+
   test "use a decode_func() to put the bnot() of a field in its place" do
     use Bitwise
     value = 0xAACC
@@ -229,15 +279,18 @@ defmodule CodecTest do
   defmodule CRCMsg do
     import TestHelper
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        key                :: 16-default(0x1234),
-        payload            :: binary,
-        crc                :: little-16-call_on_encoded({:crc16Lsb, :after})
+        key::16-default(0x1234),
+        payload::binary,
+        crc::little-16-call_on_encoded({:crc16Lsb, :after})
       >>
     end
   end
+
   test "use call_on_encoded() to put a 16 bit CRC of the payload at the end of the packet" do
     crc_msg = %CRCMsg.S{}
     packet = "1234567890" |> CRCMsg.encode(crc_msg)
@@ -247,15 +300,18 @@ defmodule CodecTest do
   defmodule CRC32Msg do
     import TestHelper
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        key                :: 16-default(0x1234),
-        payload            :: binary,
-        crc                :: little-32-call_on_encoded({:crc32Lsb, :before})
+        key::16-default(0x1234),
+        payload::binary,
+        crc::little-32-call_on_encoded({:crc32Lsb, :before})
       >>
     end
   end
+
   test "use call_on_encoded() to put a 32 bit CRC of the payload at the beginning of the packet" do
     crc_msg = %CRC32Msg.S{}
     packet = "1234567890" |> CRC32Msg.encode(crc_msg)
@@ -268,14 +324,17 @@ defmodule CodecTest do
   defmodule SumValuesBeginTest do
     import TestHelper
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        sum                :: 16-call_on_encoded({:sum, :before}),
-        payload            :: binary,
+        sum::16-call_on_encoded({:sum, :before}),
+        payload::binary
       >>
     end
   end
+
   test "use call_on_encoded() to sum some values in a string and put them at the beginning" do
     packet = <<1, 2, 3, 4>> |> SumValuesBeginTest.encode(%SumValuesBeginTest.S{})
     strct = SumValuesBeginTest.decode(packet)
@@ -286,14 +345,17 @@ defmodule CodecTest do
 
   defmodule PutPayloadBeforeValueTest do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        payload            :: binary,
-        key                :: little-32-default(0xEFCDAB89)
+        payload::binary,
+        key::little-32-default(0xEFCDAB89)
       >>
     end
   end
+
   test "ensure that payload does not have to be the last field in the structure" do
     packet = <<1, 2, 3, 4>> |> PutPayloadBeforeValueTest.encode(%PutPayloadBeforeValueTest.S{})
     strct = PutPayloadBeforeValueTest.decode(packet)
@@ -303,18 +365,22 @@ defmodule CodecTest do
 
   defmodule DefaultValueTest do
     use Codec.Generator
-    make_encoder_decoder() do
+
+    make_encoder_decoder do
       module = __MODULE__
+
       <<
-        special_value            :: 32-default(12345),
+        special_value::32-default(12345)
       >>
     end
   end
+
   test "ensure that default() values are honored" do
     packet = DefaultValueTest.encode("", %DefaultValueTest.S{})
     strct = DefaultValueTest.decode(packet)
     assert strct.special_value == 12345
   end
+
   test "ensure that default() values can be overridden" do
     packet = DefaultValueTest.encode("", %DefaultValueTest.S{special_value: 54321})
     strct = DefaultValueTest.decode(packet)
@@ -323,13 +389,16 @@ defmodule CodecTest do
 
   defmodule CustomDefaultValueTest do
     use Codec.Generator
+
     make_encoder_decoder(special: 54321) do
       module = __MODULE__
+
       <<
-        special_value            :: 32-default(:special),
+        special_value::32-default(:special)
       >>
     end
   end
+
   test "pass in a custom default value to be used by the default() function" do
     packet = CustomDefaultValueTest.encode("", %CustomDefaultValueTest.S{})
     strct = CustomDefaultValueTest.decode(packet)

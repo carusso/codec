@@ -126,28 +126,6 @@ A customer directive can be specified on a given bit field.
 ### default()
 This directive sets a default value for the specified field.  Currently, only integer value fields are supported.
 
-###  add_shift(shift_amount)
-(Note that this directive is currently not passing tests.  It's not being used in production anywhere and the problem would need to be resolved)
-Some bit fields longer than a byte need to be reassembled with little endian encoding.  For example:
-```elixir
-    <<
-      foo         :: 3,
-      important   :: little-13,
-    >>
-```
-
-The Elixir way of handling that field is to consider the first 8 bits to be the least significant byte and the upper 5 bits to be the upper bits of the most significant byte.  Basically, the bits read in are all the high bits of the two byte value before being flipped.  Often, that's not what you want.  Instead, you'd like for the bits of the "important" field to be read in as the lower 13 bits of the value and then the little endian byte swapping occurs after that.
-
-The add_shift(shift_amount) directive can be used along with split fields to tell the encoders and decoders a bit more about how to assemble and disassemble these fields.
-```elixir
-    <<
-      foo         :: 3,
-      important   :: 5, # These 5 bits will be in the lsB
-      important   :: 8-add_shift(3), # We shift an extra 3 bits to put these
-                                     # all the way in the msB
-    >>
-```
-
 ###  encode_func(<function call>)
 For encoding, sometimes values need to be calculated at the time that the encoding is happening.  If the calculation can happen without encoding being completed for the entire packet, use encode_func().  For example:
 ```elixir
